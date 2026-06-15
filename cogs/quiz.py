@@ -67,6 +67,8 @@ def make_quiz(is_dealer: bool = None, honba: int = 0) -> Optional[QuizSession]:
     houtei = not is_tsumo and not riichi and random.random() < 0.15
     rinshan = is_tsumo and random.random() < 0.05
     chankan = not is_tsumo and random.random() < 0.05
+    tenhou = is_tsumo and is_dealer and random.random() < 0.02
+    chiihou = is_tsumo and not is_dealer and random.random() < 0.02
 
     extra = {
         'riichi': riichi and not double_riichi,
@@ -76,6 +78,8 @@ def make_quiz(is_dealer: bool = None, honba: int = 0) -> Optional[QuizSession]:
         'houtei': houtei,
         'rinshan': rinshan,
         'chankan': chankan,
+        'tenhou': tenhou,
+        'chiihou': chiihou,
     }
 
     hand_info = generate_random_winning_hand(
@@ -207,6 +211,10 @@ def build_quiz_embed(session: QuizSession) -> discord.Embed:
         conditions.append('영상개화')
     if extra.get('chankan'):
         conditions.append('창깡')
+    if extra.get('tenhou'):
+        conditions.append('천화')
+    if extra.get('chiihou'):
+        conditions.append('지화')
 
     if conditions:
         embed.add_field(

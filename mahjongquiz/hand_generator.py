@@ -158,9 +158,9 @@ def generate_random_winning_hand(
         )[0]
 
         if hand_type == 'yakuman':
-            result = _generate_yakuman(tsumo)
+            result = _generate_yakuman(seat_wind, round_wind, tsumo)
         elif hand_type == 'chiitoitsu':
-            result = _generate_chiitoitsu(tsumo)
+            result = _generate_chiitoitsu(seat_wind, round_wind, tsumo)
         else:
             result = _generate_standard(seat_wind, round_wind, tsumo)
 
@@ -259,7 +259,7 @@ def _generate_standard(seat_wind, round_wind, tsumo) -> Optional[dict]:
     }
 
 
-def _generate_chiitoitsu(tsumo) -> Optional[dict]:
+def _generate_chiitoitsu(seat_wind, round_wind, tsumo) -> Optional[dict]:
     """치또이쯔 생성 (완전 랜덤)"""
     # 패 풀 생성 및 섞기
     pool = list(ALL_TILES) * 4
@@ -300,27 +300,27 @@ def _generate_chiitoitsu(tsumo) -> Optional[dict]:
         'win_tile': win_tile,
         'is_tsumo': tsumo,
         'decomp_type': 'chiitoitsu',
-        'seat_wind': '1z',
-        'round_wind': '1z',
+        'seat_wind': seat_wind,
+        'round_wind': round_wind,
     }
 
 
-def _generate_yakuman(tsumo) -> Optional[dict]:
+def _generate_yakuman(seat_wind, round_wind, tsumo) -> Optional[dict]:
     """역만 생성 (대삼원, 소사희, 녹일색, 청노두 등)"""
     yakuman_types = ['daisangen', 'shousushi', 'ryokuitsu', 'honroutou']
     yakuman_type = random.choice(yakuman_types)
     
     if yakuman_type == 'daisangen':  # 대삼원
-        return _generate_daisangen(tsumo)
+        return _generate_daisangen(seat_wind, round_wind, tsumo)
     elif yakuman_type == 'shousushi':  # 소사희
-        return _generate_shousushi(tsumo)
+        return _generate_shousushi(seat_wind, round_wind, tsumo)
     elif yakuman_type == 'ryokuitsu':  # 녹일색
-        return _generate_ryokuitsu(tsumo)
+        return _generate_ryokuitsu(seat_wind, round_wind, tsumo)
     else:  # 청노두
-        return _generate_honroutou(tsumo)
+        return _generate_honroutou(seat_wind, round_wind, tsumo)
 
 
-def _generate_daisangen(tsumo) -> Optional[dict]:
+def _generate_daisangen(seat_wind, round_wind, tsumo) -> Optional[dict]:
     """대삼원 생성 (삼원패 3개 각자)"""
     # 삼원패: 5z(백), 6z(발), 7z(중)
     sangenpai = ['5z', '6z', '7z']
@@ -385,12 +385,12 @@ def _generate_daisangen(tsumo) -> Optional[dict]:
         'win_tile': win_tile,
         'is_tsumo': tsumo,
         'decomp_type': 'standard',
-        'seat_wind': '1z',
-        'round_wind': '1z',
+        'seat_wind': seat_wind,
+        'round_wind': round_wind,
     }
 
 
-def _generate_shousushi(tsumo) -> Optional[dict]:
+def _generate_shousushi(seat_wind, round_wind, tsumo) -> Optional[dict]:
     """소사희 생성 (3개 풍패 각자 + 1개 풍패 머리)"""
     kazepai = ['1z', '2z', '3z', '4z']  # 동남서북
     
@@ -451,12 +451,12 @@ def _generate_shousushi(tsumo) -> Optional[dict]:
         'win_tile': win_tile,
         'is_tsumo': tsumo,
         'decomp_type': 'standard',
-        'seat_wind': '1z',
-        'round_wind': '1z',
+        'seat_wind': seat_wind,
+        'round_wind': round_wind,
     }
 
 
-def _generate_jishantsu(tsumo) -> Optional[dict]:
+def _generate_jishantsu(seat_wind, round_wind, tsumo) -> Optional[dict]:
     """자일색 생성 (모든 패가 자패)"""
     # 자패: 1z~7z (동남서북백발중)
     tiles = []
@@ -503,12 +503,12 @@ def _generate_jishantsu(tsumo) -> Optional[dict]:
         'win_tile': win_tile,
         'is_tsumo': tsumo,
         'decomp_type': 'standard',
-        'seat_wind': '1z',
-        'round_wind': '1z',
+        'seat_wind': seat_wind,
+        'round_wind': round_wind,
     }
 
 
-def _generate_honroutou(tsumo) -> Optional[dict]:
+def _generate_honroutou(seat_wind, round_wind, tsumo) -> Optional[dict]:
     """청노두 생성 (노두패와 자패만)"""
     # 노두패: 1m, 9m, 1p, 9p, 1s, 9s + 자패: 1z~7z
     terminal_honor_tiles = ['1m', '9m', '1p', '9p', '1s', '9s', '1z', '2z', '3z', '4z', '5z', '6z', '7z']
@@ -555,12 +555,12 @@ def _generate_honroutou(tsumo) -> Optional[dict]:
         'win_tile': win_tile,
         'is_tsumo': tsumo,
         'decomp_type': 'standard',
-        'seat_wind': '1z',
-        'round_wind': '1z',
+        'seat_wind': seat_wind,
+        'round_wind': round_wind,
     }
 
 
-def _generate_ryokuitsu(tsumo) -> Optional[dict]:
+def _generate_ryokuitsu(seat_wind, round_wind, tsumo) -> Optional[dict]:
     """녹일색 생성 (초록색 패만 사용)"""
     # 녹색 패: 2p, 3p, 4p, 6p, 8p, 2s, 3s, 4s, 6s, 8s, 5z(발)
     green_tiles = ['2p', '3p', '4p', '6p', '8p', '2s', '3s', '4s', '6s', '8s', '5z']
@@ -634,7 +634,7 @@ def _generate_ryokuitsu(tsumo) -> Optional[dict]:
         'win_tile': win_tile,
         'is_tsumo': tsumo,
         'decomp_type': 'standard',
-        'seat_wind': '1z',
-        'round_wind': '1z',
+        'seat_wind': seat_wind,
+        'round_wind': round_wind,
     }
 

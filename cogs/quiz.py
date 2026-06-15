@@ -6,16 +6,16 @@ from discord import app_commands
 from discord.ext import commands
 import random
 from typing import Optional
-
 import sys
 import os
-# cogs/ 폴더의 부모(프로젝트 루트)를 경로에 추가
+
+# 프로젝트 루트 경로를 sys.path에 추가
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from tiles import tile_to_emoji, tiles_to_str, next_tile, ALL_TILES, ZI_NAMES
 from mahjongquiz.hand_generator import generate_random_winning_hand
 from mahjongquiz.yaku_calculator import calculate_yaku
-from mahjongquiz.fu_calculator import calculate_fu
+from mahjongquiz.fu_calculator import calculate_fu, calculate_fu_with_details
 from mahjongquiz.score_calculator import calculate_score, level_name
 
 
@@ -25,13 +25,14 @@ active_sessions: dict = {}
 
 class QuizSession:
     def __init__(self, hand_info, extra, dora_tiles, ura_dora_tiles,
-                 yaku_result, fu, score_result, is_dealer, honba):
+                 yaku_result, fu, score_result, is_dealer, honba, fu_details=None):
         self.hand_info = hand_info
         self.extra = extra
         self.dora_tiles = dora_tiles
         self.ura_dora_tiles = ura_dora_tiles
         self.yaku_result = yaku_result
         self.fu = fu
+        self.fu_details = fu_details or {'details': []}
         self.score_result = score_result
         self.is_dealer = is_dealer
         self.honba = honba
@@ -52,6 +53,10 @@ def make_quiz(is_dealer: bool = None, honba: int = 0) -> Optional[QuizSession]:
 
     seat_wind = '1z' if is_dealer else random.choice(['2z', '3z', '4z'])
     round_wind = random.choice(['1z', '2z'])
+    
+    # 동풍 장에서 자풍이 동이면 반드시 오야(동가)여야 함
+    if round_wind == '1z' and seat_wind == '1z':
+        is_dealer = True
 
     # 추가 조건 랜덤 결정
     is_tsumo = random.choice([True, False])
@@ -107,11 +112,12 @@ def make_quiz(is_dealer: bool = None, honba: int = 0) -> Optional[QuizSession]:
     if not yaku_result['is_yakuman'] and yaku_result['total_han'] == 0:
         return None
 
-    # 도라 추가
+     # 도라 추가
     total_han = yaku_result['total_han'] + dora_han + ura_han
 
-    # 부수 계산
-    fu = calculate_fu(hand_info, yaku_result, extra)
+    # 부수 계산 (상세 정보 포함)
+    fu_details = calculate_fu_with_details(hand_info, yaku_result, extra)
+    fu = fu_details['fu']
 
     # 점수 계산
     score_result = calculate_score(fu, total_han, is_tsumo, is_dealer, honba)
@@ -126,6 +132,7 @@ def make_quiz(is_dealer: bool = None, honba: int = 0) -> Optional[QuizSession]:
         score_result=score_result,
         is_dealer=is_dealer,
         honba=honba,
+        fu_details=fu_details,
     )
 
 
@@ -282,13 +289,85 @@ def build_answer_embed(session: QuizSession) -> discord.Embed:
             inline=False
         )
 
-    # 점수
+    # 점수 표시 (오야 여부에 따라)
+    score_display = f"**{score['total']:,}점**"
+    
+    # 오야(동가)인 경우 추가 표시
+    if session.is_dealer:
+        payment_details = score['payment']
+        if 'ALL' not in payment_details:
+            # 쯔모일 경우
+            if 'tsumo_each' in score:
+                score_display += f"\n({score['tsumo_each']:,} ALL)"
+            # 론일 경우
+            elif 'ron' in score:
+                score_display += f"\n({score['ron']:,} ALL)"
+    
     embed.add_field(
         name='💰 정답 점수',
-        value=f"**{score['total']:,}점**\n{score['payment']}",
+        value=f"{score_display}\n{score['payment']}",
         inline=False
     )
 
+    return embed
+
+
+def build_fu_details_embed(session: QuizSession) -> discord.Embed:
+    """부수 계산 상세 설명 embed"""
+    fu_details = session.fu_details
+    yaku = session.yaku_result
+    fu = session.fu
+    score = session.score_result
+    
+    level = score.get('level')
+    level_str = f' ({level_name(level)})' if level else ''
+    
+    embed = discord.Embed(
+        title='📊 부수 계산 상세',
+        color=0x3498db,
+    )
+    
+    # 부수 계산 내역
+    if fu_details.get('details'):
+        details_text = ""
+        for desc, fu_value in fu_details['details']:
+            if fu_value == 0:
+                details_text += f"• {desc}: {fu_value}부\n"
+            else:
+                details_text += f"• {desc}: {fu_value}부\n"
+        
+        embed.add_field(name='🔢 부수 계산', value=details_text.strip(), inline=False)
+    
+    # 최종 부수
+    base_fu = fu_details.get('base_fu', fu)
+    if base_fu != fu:
+        embed.add_field(
+            name='🧮 절상',
+            value=f'{base_fu}부 → **{fu}부** (10단위 절상)',
+            inline=False
+        )
+    else:
+        embed.add_field(
+            name='🧮 최종 부수',
+            value=f'**{fu}부**',
+            inline=False
+        )
+    
+    # 총 한수와 점수
+    tiles = session.hand_info['tiles']
+    dora_han = sum(tiles.count(a) for _, a in session.dora_tiles)
+    ura_han = sum(tiles.count(a) for _, a in session.ura_dora_tiles)
+    total_han = yaku['total_han'] + dora_han + ura_han
+    
+    points_str = f"{fu}부 × {total_han}판{level_str}\n"
+    points_str += f"→ **{score['total']:,}점**"
+    
+    embed.add_field(
+        name='💰 점수',
+        value=points_str,
+        inline=False
+    )
+    
     return embed
 
 
@@ -345,9 +424,10 @@ class QuizCog(commands.Cog):
             return
 
         del active_sessions[channel_id]
-        embed = build_answer_embed(session)
-        embed.title = '📖 정답 공개 (포기)'
-        await interaction.response.send_message(embed=embed)
+        answer_embed = build_answer_embed(session)
+        answer_embed.title = '📖 정답 공개 (포기)'
+        fu_embed = build_fu_details_embed(session)
+        await interaction.response.send_message(embeds=[answer_embed, fu_embed])
 
     @app_commands.command(name='포기', description='현재 퀴즈를 포기하고 정답을 봅니다.')
     async def give_up(self, interaction: discord.Interaction):
@@ -376,6 +456,7 @@ class QuizCog(commands.Cog):
         del active_sessions[channel_id]
 
         answer_embed = build_answer_embed(session)
+        fu_embed = build_fu_details_embed(session)
 
         if user_answer == correct:
             result_embed = discord.Embed(
@@ -395,8 +476,11 @@ class QuizCog(commands.Cog):
                 color=0xE74C3C,
             )
 
-        await message.channel.send(embeds=[result_embed, answer_embed])
+        await message.channel.send(embeds=[result_embed, answer_embed, fu_embed])
 
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(QuizCog(bot))
+
+
+

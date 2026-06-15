@@ -3,11 +3,15 @@
 리치마작의 주요 역을 계산합니다.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from tiles import (
     is_terminal, is_honor, is_terminal_or_honor,
     SANGENPAI, KAZEPAI, is_green, ZI
 )
-from hand_generator import is_chiitoitsu, is_kokushi, count_tiles
+from .hand_generator import is_chiitoitsu, is_kokushi, count_tiles
 
 
 def calculate_yaku(hand_info: dict, extra_conditions: dict) -> dict:

@@ -6,6 +6,10 @@
 """
 import random
 from typing import Optional
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from tiles import (
     ALL_TILES, MAN, PIN, SOU, ZI,
     is_terminal, is_honor, is_terminal_or_honor,
@@ -143,16 +147,19 @@ def generate_random_winning_hand(
         melds: 몸통 목록 (list of tuple)
         win_tile: 화료패
         is_tsumo: 쯔모 여부
-        decomp_type: 'standard' | 'chiitoitsu' | 'kokushi'
+        decomp_type: 'standard' | 'chiitoitsu' | 'yakuman'
     """
     max_attempts = 500
     for _ in range(max_attempts):
+        # 역만 생성 확률 (10%)
         hand_type = random.choices(
-            ['standard', 'chiitoitsu'],
-            weights=[85, 15]
+            ['standard', 'chiitoitsu', 'yakuman'],
+            weights=[75, 15, 10]
         )[0]
 
-        if hand_type == 'chiitoitsu':
+        if hand_type == 'yakuman':
+            result = _generate_yakuman(tsumo)
+        elif hand_type == 'chiitoitsu':
             result = _generate_chiitoitsu(tsumo)
         else:
             result = _generate_standard(seat_wind, round_wind, tsumo)
@@ -164,12 +171,12 @@ def generate_random_winning_hand(
 
 
 def _generate_standard(seat_wind, round_wind, tsumo) -> Optional[dict]:
-    """일반 화료패 생성"""
+    """일반 화료패 생성 (완전 랜덤)"""
     # 패 풀 (각 패 4장)
     pool = ALL_TILES * 4
     random.shuffle(pool)
 
-    # 머리 선택
+    # 머리 선택 (무작위)
     head_tile = random.choice(ALL_TILES)
     hand = [head_tile, head_tile]
     pool_copy = list(pool)
@@ -177,16 +184,35 @@ def _generate_standard(seat_wind, round_wind, tsumo) -> Optional[dict]:
         if t in pool_copy:
             pool_copy.remove(t)
 
-    # 몸통 4개 생성
+    # 몸통 4개 생성 (완전 랜덤)
     melds = []
     attempts = 0
-    while len(melds) < 4 and attempts < 200:
+    while len(melds) < 4 and attempts < 300:
         attempts += 1
-        meld_type = random.choice(['sequence', 'sequence', 'triplet'])
+        # 시퀀스 vs 트리플릿 확률 조정
+        meld_type = random.choice(['sequence', 'sequence', 'sequence', 'triplet'])
+        
         if meld_type == 'triplet':
-            tile = random.choice(ALL_TILES)
+            # 풀에서 무작위로 선택
+            available_triplets = []
+            for tile in ALL_TILES:
+                temp_pool = list(pool_copy)
+                needed = [tile, tile, tile]
+                count = 0
+                for t in needed:
+                    if t in temp_pool:
+                        temp_pool.remove(t)
+                        count += 1
+                if count == 3:
+                    available_triplets.append(tile)
+            
+            if not available_triplets:
+                continue
+            
+            tile = random.choice(available_triplets)
             needed = [tile, tile, tile]
         else:
+            # 순자 생성 (무작위)
             suit = random.choice([MAN, PIN, SOU])
             num = random.randint(1, 7)
             tile = f'{num}{suit}'
@@ -203,10 +229,10 @@ def _generate_standard(seat_wind, round_wind, tsumo) -> Optional[dict]:
 
         if available:
             pool_copy = temp_pool
-            meld = tuple(sorted(needed) if meld_type == 'sequence' else needed)
-            # sequence는 순서 정렬
             if meld_type == 'sequence':
                 meld = (needed[0], needed[1], needed[2])
+            else:
+                meld = tuple(needed)
             melds.append((meld_type, meld))
 
     if len(melds) != 4:
@@ -217,7 +243,7 @@ def _generate_standard(seat_wind, round_wind, tsumo) -> Optional[dict]:
     for _, m in melds:
         all_tiles.extend(m)
 
-    # 화료패 선택 (머리 또는 몸통의 마지막 패)
+    # 화료패 선택 (무작위)
     win_tile = random.choice(all_tiles)
 
     return {
@@ -234,26 +260,36 @@ def _generate_standard(seat_wind, round_wind, tsumo) -> Optional[dict]:
 
 
 def _generate_chiitoitsu(tsumo) -> Optional[dict]:
-    """치또이쯔 생성"""
-    pool = ALL_TILES * 4
+    """치또이쯔 생성 (완전 랜덤)"""
+    # 패 풀 생성 및 섞기
+    pool = list(ALL_TILES) * 4
     random.shuffle(pool)
-
+    
+    # 7쌍을 무작위로 선택
+    # 패 풀에서 랜덤으로 선택된 패들 중에서 쌍을 만들기
     chosen = []
-    used = set()
-    for tile in ALL_TILES:
-        if tile not in used and pool.count(tile) >= 2:
-            chosen.append(tile)
-            used.add(tile)
-        if len(chosen) == 7:
-            break
-
-    if len(chosen) != 7:
+    tile_list = list(ALL_TILES)
+    random.shuffle(tile_list)  # 패 종류를 무작위 순서로
+    
+    pool_pairs = {}
+    for tile in pool:
+        if tile not in pool_pairs:
+            pool_pairs[tile] = 0
+        pool_pairs[tile] += 1
+    
+    # 2개 이상 있는 패들 중에서 랜덤으로 7개 선택
+    available_pairs = [tile for tile, count in pool_pairs.items() if count >= 2]
+    if len(available_pairs) < 7:
         return None
+    
+    chosen = random.sample(available_pairs, 7)
 
+    # 14패 생성 (7쌍)
     tiles = []
     for t in chosen:
         tiles.extend([t, t])
 
+    # 화료패 선택 (무작위)
     win_tile = random.choice(chosen)
 
     return {
@@ -267,3 +303,338 @@ def _generate_chiitoitsu(tsumo) -> Optional[dict]:
         'seat_wind': '1z',
         'round_wind': '1z',
     }
+
+
+def _generate_yakuman(tsumo) -> Optional[dict]:
+    """역만 생성 (대삼원, 소사희, 녹일색, 청노두 등)"""
+    yakuman_types = ['daisangen', 'shousushi', 'ryokuitsu', 'honroutou']
+    yakuman_type = random.choice(yakuman_types)
+    
+    if yakuman_type == 'daisangen':  # 대삼원
+        return _generate_daisangen(tsumo)
+    elif yakuman_type == 'shousushi':  # 소사희
+        return _generate_shousushi(tsumo)
+    elif yakuman_type == 'ryokuitsu':  # 녹일색
+        return _generate_ryokuitsu(tsumo)
+    else:  # 청노두
+        return _generate_honroutou(tsumo)
+
+
+def _generate_daisangen(tsumo) -> Optional[dict]:
+    """대삼원 생성 (삼원패 3개 각자)"""
+    # 삼원패: 5z(백), 6z(발), 7z(중)
+    sangenpai = ['5z', '6z', '7z']
+    
+    # 각자 3개 (각각 3중)
+    tiles = []
+    melds = []
+    for sp in sangenpai:
+        tiles.extend([sp, sp, sp])
+        melds.append(('triplet', (sp, sp, sp)))
+    
+    # 나머지 2개 순자/각자
+    remaining_tiles = [t for t in ALL_TILES if t not in sangenpai]
+    remaining_pool = remaining_tiles * 4
+    random.shuffle(remaining_pool)
+    pool_copy = list(remaining_pool)
+    
+    # 머리 선택
+    head_tile = random.choice(remaining_tiles)
+    head = (head_tile, head_tile)
+    tiles.extend([head_tile, head_tile])
+    for _ in range(2):
+        if head_tile in pool_copy:
+            pool_copy.remove(head_tile)
+    
+    # 몸통 1개 추가
+    attempts = 0
+    while len(melds) < 4 and attempts < 300:
+        attempts += 1
+        meld_type = random.choice(['sequence', 'triplet'])
+        
+        if meld_type == 'triplet':
+            available_triplets = [t for t in remaining_tiles if pool_copy.count(t) >= 3]
+            if available_triplets:
+                tile = random.choice(available_triplets)
+                melds.append(('triplet', (tile, tile, tile)))
+                for _ in range(3):
+                    pool_copy.remove(tile)
+                tiles.extend([tile, tile, tile])
+        else:
+            # 순자 생성 (무작위)
+            suit = random.choice([MAN, PIN, SOU])
+            num = random.randint(1, 7)
+            tile = f'{num}{suit}'
+            needed = [f'{num}{suit}', f'{num+1}{suit}', f'{num+2}{suit}']
+            if all(pool_copy.count(t) >= 1 for t in needed):
+                melds.append(('sequence', tuple(needed)))
+                for t in needed:
+                    pool_copy.remove(t)
+                    tiles.append(t)
+    
+    if len(melds) != 4:
+        return None
+    
+    win_tile = random.choice(tiles)
+    
+    return {
+        'tiles': sorted(tiles),
+        'head': head,
+        'melds': [m for _, m in melds],
+        'meld_types': [t for t, _ in melds],
+        'win_tile': win_tile,
+        'is_tsumo': tsumo,
+        'decomp_type': 'standard',
+        'seat_wind': '1z',
+        'round_wind': '1z',
+    }
+
+
+def _generate_shousushi(tsumo) -> Optional[dict]:
+    """소사희 생성 (3개 풍패 각자 + 1개 풍패 머리)"""
+    kazepai = ['1z', '2z', '3z', '4z']  # 동남서북
+    
+    # 3개의 풍패를 각자로
+    selected_kaze = random.sample(kazepai, 3)
+    tiles = []
+    melds = []
+    for kaze in selected_kaze:
+        tiles.extend([kaze, kaze, kaze])
+        melds.append(('triplet', (kaze, kaze, kaze)))
+    
+    # 머리용 풍패 (남은 것 중 1개)
+    head_kaze = [k for k in kazepai if k not in selected_kaze][0]
+    tiles.extend([head_kaze, head_kaze])
+    head = (head_kaze, head_kaze)
+    
+    # 나머지 1개 몸통
+    remaining_tiles = [t for t in ALL_TILES if t[1] != 'z']
+    remaining_pool = remaining_tiles * 4
+    random.shuffle(remaining_pool)
+    pool_copy = list(remaining_pool)
+    
+    attempts = 0
+    while len(melds) < 4 and attempts < 200:
+        attempts += 1
+        meld_type = random.choice(['sequence', 'triplet'])
+        
+        if meld_type == 'triplet':
+            available_triplets = [t for t in remaining_tiles if pool_copy.count(t) >= 3]
+            if available_triplets:
+                tile = random.choice(available_triplets)
+                melds.append(('triplet', (tile, tile, tile)))
+                for _ in range(3):
+                    pool_copy.remove(tile)
+                tiles.extend([tile, tile, tile])
+        else:
+            # 순자 생성
+            suit = random.choice([MAN, PIN, SOU])
+            num = random.randint(1, 7)
+            tile = f'{num}{suit}'
+            needed = [f'{num}{suit}', f'{num+1}{suit}', f'{num+2}{suit}']
+            if all(pool_copy.count(t) >= 1 for t in needed):
+                melds.append(('sequence', tuple(needed)))
+                for t in needed:
+                    pool_copy.remove(t)
+                    tiles.append(t)
+    
+    if len(melds) != 4:
+        return None
+    
+    win_tile = random.choice(tiles)
+    
+    return {
+        'tiles': sorted(tiles),
+        'head': head,
+        'melds': [m for _, m in melds],
+        'meld_types': [t for t, _ in melds],
+        'win_tile': win_tile,
+        'is_tsumo': tsumo,
+        'decomp_type': 'standard',
+        'seat_wind': '1z',
+        'round_wind': '1z',
+    }
+
+
+def _generate_jishantsu(tsumo) -> Optional[dict]:
+    """자일색 생성 (모든 패가 자패)"""
+    # 자패: 1z~7z (동남서북백발중)
+    tiles = []
+    pool = list(ZI) * 4
+    random.shuffle(pool)
+    
+    # 머리 선택
+    head_tile = random.choice(ZI)
+    head = (head_tile, head_tile)
+    tiles.extend([head_tile, head_tile])
+    pool_copy = list(pool)
+    for _ in range(2):
+        if head_tile in pool_copy:
+            pool_copy.remove(head_tile)
+    
+    # 몸통 4개 (모두 자패)
+    melds = []
+    attempts = 0
+    while len(melds) < 4 and attempts < 200:
+        attempts += 1
+        
+        # 사용 가능한 자패 찾기
+        available_triplets = [t for t in ZI if pool_copy.count(t) >= 3]
+        
+        if not available_triplets:
+            continue
+        
+        tile = random.choice(available_triplets)
+        melds.append(('triplet', (tile, tile, tile)))
+        for _ in range(3):
+            pool_copy.remove(tile)
+        tiles.extend([tile, tile, tile])
+    
+    if len(melds) != 4:
+        return None
+    
+    win_tile = random.choice(tiles)
+    
+    return {
+        'tiles': sorted(tiles),
+        'head': head,
+        'melds': [m for _, m in melds],
+        'meld_types': [t for t, _ in melds],
+        'win_tile': win_tile,
+        'is_tsumo': tsumo,
+        'decomp_type': 'standard',
+        'seat_wind': '1z',
+        'round_wind': '1z',
+    }
+
+
+def _generate_honroutou(tsumo) -> Optional[dict]:
+    """청노두 생성 (노두패와 자패만)"""
+    # 노두패: 1m, 9m, 1p, 9p, 1s, 9s + 자패: 1z~7z
+    terminal_honor_tiles = ['1m', '9m', '1p', '9p', '1s', '9s', '1z', '2z', '3z', '4z', '5z', '6z', '7z']
+    
+    tiles = []
+    pool = terminal_honor_tiles * 4
+    random.shuffle(pool)
+    
+    # 머리 선택
+    head_tile = random.choice(terminal_honor_tiles)
+    head = (head_tile, head_tile)
+    tiles.extend([head_tile, head_tile])
+    pool_copy = list(pool)
+    for _ in range(2):
+        if head_tile in pool_copy:
+            pool_copy.remove(head_tile)
+    
+    # 몸통 4개
+    melds = []
+    attempts = 0
+    while len(melds) < 4 and attempts < 300:
+        attempts += 1
+        available_triplets = [t for t in terminal_honor_tiles if pool_copy.count(t) >= 3]
+        
+        if not available_triplets:
+            continue
+        
+        tile = random.choice(available_triplets)
+        melds.append(('triplet', (tile, tile, tile)))
+        for _ in range(3):
+            pool_copy.remove(tile)
+        tiles.extend([tile, tile, tile])
+    
+    if len(melds) != 4:
+        return None
+    
+    win_tile = random.choice(tiles)
+    
+    return {
+        'tiles': sorted(tiles),
+        'head': head,
+        'melds': [m for _, m in melds],
+        'meld_types': [t for t, _ in melds],
+        'win_tile': win_tile,
+        'is_tsumo': tsumo,
+        'decomp_type': 'standard',
+        'seat_wind': '1z',
+        'round_wind': '1z',
+    }
+
+
+def _generate_ryokuitsu(tsumo) -> Optional[dict]:
+    """녹일색 생성 (초록색 패만 사용)"""
+    # 녹색 패: 2p, 3p, 4p, 6p, 8p, 2s, 3s, 4s, 6s, 8s, 5z(발)
+    green_tiles = ['2p', '3p', '4p', '6p', '8p', '2s', '3s', '4s', '6s', '8s', '5z']
+    
+    tiles = []
+    pool = green_tiles * 4
+    random.shuffle(pool)
+    
+    # 머리 선택
+    head_tile = random.choice(green_tiles)
+    head = (head_tile, head_tile)
+    tiles.extend([head_tile, head_tile])
+    pool_copy = list(pool)
+    for _ in range(2):
+        if head_tile in pool_copy:
+            pool_copy.remove(head_tile)
+    
+    # 몸통 4개 생성 - 시퀀스와 트리플렛
+    melds = []
+    attempts = 0
+    while len(melds) < 4 and attempts < 300:
+        attempts += 1
+        meld_type = random.choice(['sequence', 'sequence', 'triplet'])
+        
+        if meld_type == 'triplet':
+            available_triplets = [t for t in green_tiles if pool_copy.count(t) >= 3]
+            if available_triplets:
+                tile = random.choice(available_triplets)
+                melds.append(('triplet', (tile, tile, tile)))
+                for _ in range(3):
+                    pool_copy.remove(tile)
+                tiles.extend([tile, tile, tile])
+        else:
+            # 순자 (소련색이나 록색 내에서)
+            suits = [t[1] for t in green_tiles if t[1] in ['p', 's']]
+            suits = list(set(suits))
+            
+            if suits:
+                suit = random.choice(suits)
+                # 이 suit에서 가능한 sequence 찾기
+                suited_tiles = [t for t in green_tiles if t[1] == suit]
+                
+                # 가능한 sequence 찾기
+                possible_sequences = []
+                for num in range(2, 7):  # 2p-4p, 3p-5p 등
+                    tile = f'{num}{suit}'
+                    if tile in green_tiles:
+                        next1 = f'{num+1}{suit}'
+                        next2 = f'{num+2}{suit}'
+                        if next1 in green_tiles and next2 in green_tiles:
+                            if pool_copy.count(tile) >= 1 and pool_copy.count(next1) >= 1 and pool_copy.count(next2) >= 1:
+                                possible_sequences.append((tile, next1, next2))
+                
+                if possible_sequences:
+                    seq = random.choice(possible_sequences)
+                    melds.append(('sequence', seq))
+                    for t in seq:
+                        pool_copy.remove(t)
+                        tiles.append(t)
+    
+    if len(melds) != 4:
+        return None
+    
+    win_tile = random.choice(tiles)
+    
+    return {
+        'tiles': sorted(tiles),
+        'head': head,
+        'melds': [m for _, m in melds],
+        'meld_types': [t for t, _ in melds],
+        'win_tile': win_tile,
+        'is_tsumo': tsumo,
+        'decomp_type': 'standard',
+        'seat_wind': '1z',
+        'round_wind': '1z',
+    }
+
